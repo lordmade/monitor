@@ -51,7 +51,7 @@
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
-    console.log('Admin panel initialized at', new Date('2025-06-26T07:36:00Z').toISOString());
+    console.log('Admin panel initialized at', new Date('2025-06-26T07:42:00Z').toISOString());
 
     // Mapbox initialization
     mapboxgl.accessToken = 'pk.eyJ1Ijoia2F0bGVnb3BoYXNoYSIsImEiOiJjbTlpOTdzbmYwMGNsMmpzYWJtZzN4d3pqIn0.Zt-aSMEoahrV3zkiVVHbOw';
@@ -103,9 +103,9 @@
       const alertRef = ref(database, `sos-alerts/${key}`);
       try {
         await update(alertRef, { status });
-        console.log(`Status updated for key ${key} to ${status} at`, new Date('2025-06-26T07:36:00Z').toISOString());
+        console.log(`Status updated for key ${key} to ${status} at`, new Date('2025-06-26T07:42:00Z').toISOString());
       } catch (error) {
-        console.error('Status update error:', error, 'at', new Date('2025-06-26T07:36:00Z').toISOString());
+        console.error('Status update error:', error, 'at', new Date('2025-06-26T07:42:00Z').toISOString());
       }
     };
 
@@ -135,7 +135,7 @@
     const alertsRef = ref(database, 'sos-alerts');
     onChildAdded(alertsRef, (snapshot) => {
       const alert = { ...snapshot.val(), key: snapshot.key };
-      console.log('New SOS alert received at', new Date('2025-06-26T07:36:00Z').toISOString(), ':', alert);
+      console.log('New SOS alert received at', new Date('2025-06-26T07:42:00Z').toISOString(), ':', alert);
       alerts.push(alert);
       updateAlertCount();
       renderAlertFeed();
@@ -143,7 +143,7 @@
 
     onChildChanged(alertsRef, (snapshot) => {
       const updatedAlert = { ...snapshot.val(), key: snapshot.key };
-      console.log('Alert updated at', new Date('2025-06-26T07:36:00Z').toISOString(), ':', updatedAlert);
+      console.log('Alert updated at', new Date('2025-06-26T07:42:00Z').toISOString(), ':', updatedAlert);
       alerts = alerts.map(a => a.key === updatedAlert.key ? updatedAlert : a);
       renderAlertFeed();
     });
