@@ -3,85 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Security Monitor</title>
-  <!-- Tailwind CSS CDN -->
+  <title>SOS Admin Panel</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Leaflet.js CDN -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"></script>
   <style>
-    /* Custom animations for critical alerts */
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-    }
-    .critical-alert {
-      animation: pulse 1s infinite;
-    }
-    /* Scrollbar styling */
-    #alert-feed::-webkit-scrollbar {
-      width: 8px;
-    }
-    #alert-feed::-webkit-scrollbar-thumb {
-      background: #4b5563;
-      border-radius: 4px;
-    }
-    /* Map styling */
-    #map { border-radius: 0.5rem; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+    .alert-pulse { animation: pulse 1s infinite; }
+    #alert-feed::-webkit-scrollbar { width: 8px; }
+    #alert-feed::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
   </style>
 </head>
 <body class="bg-gray-100 font-sans">
   <div class="container mx-auto p-4">
-    <!-- Header -->
-    <header class="bg-red-600 text-white p-4 rounded-md mb-6">
-      <h1 class="text-2xl font-bold">Security Monitor Dashboard</h1>
-      <p class="text-sm">Real-time user safety monitoring</p>
+    <header class="bg-blue-600 text-white p-4 rounded-md mb-6">
+      <h1 class="text-2xl font-bold">SOS Admin Panel</h1>
+      <p class="text-sm">Monitor and respond to emergencies</p>
     </header>
-
-    <!-- Dashboard Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <div class="bg-white p-4 rounded-md shadow">
-        <h2 class="text-lg font-semibold">Total Incidents</h2>
-        <p id="total-incidents" class="text-2xl font-bold">0</p>
-      </div>
-      <div class="bg-white p-4 rounded-md shadow">
-        <h2 class="text-lg font-semibold">Critical Incidents</h2>
-        <p id="critical-incidents" class="text-2xl font-bold text-red-600">0</p>
-      </div>
-      <div class="bg-white p-4 rounded-md shadow">
-        <h2 class="text-lg font-semibold">Last Incident</h2>
-        <p id="last-incident" class="text-sm">None</p>
-      </div>
+    <div class="bg-white p-4 rounded-md shadow mb-6">
+      <h2 class="text-lg font-semibold mb-2">Active Alerts</h2>
+      <p id="alert-count" class="text-sm text-gray-600">0 alerts</p>
     </div>
-
-    <!-- Chart, Map, and Alert Feed -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <!-- Chart and Map -->
-      <div class="space-y-4">
-        <div class="bg-white p-4 rounded-md shadow">
-          <h2 class="text-lg font-semibold mb-4">Incident Types</h2>
-          <canvas id="incidentChart"></canvas>
-        </div>
-        <div class="bg-white p-4 rounded-md shadow">
-          <h2 class="text-lg font-semibold mb-4">Incident Locations</h2>
-          <div id="map" class="h-64"></div>
-        </div>
-      </div>
-
-      <!-- Alert Feed -->
-      <div class="bg-white p-4 rounded-md shadow">
-        <h2 class="text-lg font-semibold mb-4">Real-Time Incident Feed</h2>
-        <div id="alert-feed" class="space-y-4 max-h-96 overflow-y-auto"></div>
-      </div>
+    <div class="bg-white p-4 rounded-md shadow">
+      <h2 class="text-lg font-semibold mb-4">Alert Feed</h2>
+      <div id="alert-feed" class="space-y-4 max-h-96 overflow-y-auto"></div>
     </div>
   </div>
+  <script type="module">
+    // Import Firebase modules
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import { getDatabase, ref, onChildAdded, onChildChanged, update } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
-  <script>
     // Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyBOyZ3As4GTuNvjemvPF_SpsC6m6vqtNhc",
@@ -95,120 +45,65 @@
     };
 
     // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+    console.log('Admin panel initialized at', new Date('2025-06-26T05:40:00Z').toISOString());
 
-    // Initialize state
-    let incidents = [];
-    let incidentCounts = { 'Break-In': 0, Robbery: 0, 'Medical Emergency': 0 };
+    // State
+    let alerts = [];
 
-    // Initialize map (Leaflet.js)
-    const map = L.map('map').setView([-26.2041, 28.0473], 12); // Centered on Johannesburg, SAST
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    // UI elements
+    const alertCount = document.getElementById('alert-count');
+    const alertFeed = document.getElementById('alert-feed');
 
-    // Chart.js setup
-    const ctx = document.getElementById('incidentChart').getContext('2d');
-    const incidentChart = new Chart(ctx, {
-      type: 'pie',
-      data: {
-        labels: ['Break-In', 'Robbery', 'Medical Emergency'],
-        datasets: [{
-          data: [0, 0, 0],
-          backgroundColor: ['#ef4444', '#f59e0b', '#10b981'],
-        }],
-      },
-      options: { responsive: true }
-    });
-
-    // Update dashboard stats
-    function updateStats() {
-      document.getElementById('total-incidents').textContent = incidents.length;
-      document.getElementById('critical-incidents').textContent = incidents.filter(i => i.severity === 'Critical').length;
-      document.getElementById('last-incident').textContent = incidents.length ? incidents[incidents.length - 1].time : 'None';
+    // Update alert count
+    function updateAlertCount() {
+      alertCount.textContent = `${alerts.length} alerts`;
     }
 
     // Render alert feed
     function renderAlertFeed() {
-      const feed = document.getElementById('alert-feed');
-      feed.innerHTML = incidents.map(incident => `
-        <div class="p-3 border-l-4 ${incident.severity === 'Critical' ? 'border-red-600 critical-alert' : incident.severity === 'High' ? 'border-orange-500' : 'border-yellow-500'} bg-gray-50 rounded">
-          <p class="font-semibold">${incident.userId} - ${incident.incident}</p>
-          <p class="text-sm text-gray-600">${incident.details}</p>
-          <p class="text-xs text-gray-500">${incident.time} | Lat: ${incident.location.lat}, Lng: ${incident.location.lng}</p>
+      alertFeed.innerHTML = alerts.map(alert => `
+        <div class="p-3 border-l-4 ${alert.status === 'pending' ? 'border-red-600 alert-pulse' : alert.status === 'in-progress' ? 'border-yellow-600' : 'border-green-600'} bg-gray-50 rounded">
+          <p class="font-semibold">${alert.userId} - SOS</p>
+          <p class="text-sm text-gray-600">${alert.details}</p>
+          <p class="text-xs text-gray-500">Time: ${alert.timestamp} | Lat: ${alert.location.lat ?? 'N/A'}, Lng: ${alert.location.lng ?? 'N/A'}</p>
+          <select class="mt-2 p-1 border rounded" onchange="updateStatus('${alert.key}', this.value)">
+            <option value="pending" ${alert.status === 'pending' ? 'selected' : ''}>Pending</option>
+            <option value="in-progress" ${alert.status === 'in-progress' ? 'selected' : ''}>In Progress</option>
+            <option value="resolved" ${alert.status === 'resolved' ? 'selected' : ''}>Resolved</option>
+          </select>
         </div>
       `).join('');
     }
 
-    // Update chart
-    function updateChart() {
-      incidentChart.data.datasets[0].data = [incidentCounts['Break-In'], incidentCounts.Robbery, incidentCounts['Medical Emergency']];
-      incidentChart.update();
-    }
-
-    // Update map markers
-    function updateMap() {
-      map.eachLayer(layer => { if (layer instanceof L.Marker) map.removeLayer(layer); });
-      incidents.forEach(incident => {
-        L.marker([incident.location.lat, incident.location.lng])
-          .addTo(map)
-          .bindPopup(`<b>${incident.incident}</b><br>User: ${incident.userId}<br>Time: ${incident.time}`);
-      });
-    }
-
-    // Basic anomaly detection (e.g., >3 incidents in 5km)
-    function detectAnomalies(newIncident) {
-      const recentIncidents = incidents.filter(i => new Date(i.time) > new Date(Date.now() - 5 * 60 * 1000));
-      const nearbyIncidents = recentIncidents.filter(i => {
-        const distance = Math.sqrt(
-          Math.pow(i.location.lat - newIncident.location.lat, 2) +
-          Math.pow(i.location.lng - newIncident.location.lng, 2)
-        );
-        return distance < 0.05; // Approx 5km
-      });
-      if (nearbyIncidents.length > 3) {
-        console.log(`Anomaly detected: ${nearbyIncidents.length} incidents near ${newIncident.location.lat}, ${newIncident.location.lng}`);
-        // Trigger notification (e.g., email, SMS) in production
+    // Update alert status
+    window.updateStatus = async (key, status) => {
+      const alertRef = ref(database, `sos-alerts/${key}`);
+      try {
+        await update(alertRef, { status });
+        console.log(`Status updated for key ${key} to ${status} at`, new Date().toISOString());
+      } catch (error) {
+        console.error('Status update error:', error, 'at', new Date().toISOString());
       }
-    }
+    };
 
-    // Listen for new incidents from Firebase
-    database.ref('incidents').on('child_added', snapshot => {
-      const incident = snapshot.val();
-      incidents.push(incident);
-      incidentCounts[incident.incident]++;
-      detectAnomalies(incident);
-      updateStats();
+    // Listen for new and updated alerts
+    const alertsRef = ref(database, 'sos-alerts');
+    onChildAdded(alertsRef, (snapshot) => {
+      const alert = { ...snapshot.val(), key: snapshot.key };
+      console.log('New SOS alert received at', new Date().toISOString(), ':', alert);
+      alerts.push(alert);
+      updateAlertCount();
       renderAlertFeed();
-      updateChart();
-      updateMap();
-      // Simulate automated response for critical incidents
-      if (incident.severity === 'Critical') {
-        console.log(`Automated response: Notifying authorities for ${incident.incident} by ${incident.userId}`);
-        // In production, call API (e.g., Twilio for SMS, police API)
-      }
     });
 
-    // Simulate client alert (for testing; remove in production)
-    function simulateIncident() {
-      const mockIncidents = [
-        { userId: `User${Math.floor(Math.random() * 1000)}`, incident: 'Break-In', severity: 'Critical', time: new Date().toISOString(), location: { lat: -26.2041 + Math.random() * 0.1, lng: 28.0473 + Math.random() * 0.1 }, details: 'Window sensor triggered' },
-        { userId: `User${Math.floor(Math.random() * 1000)}`, incident: 'Robbery', severity: 'High', time: new Date().toISOString(), location: { lat: -26.2041 + Math.random() * 0.1, lng: 28.0473 + Math.random() * 0.1 }, details: 'Panic button pressed' },
-        { userId: `User${Math.floor(Math.random() * 1000)}`, incident: 'Medical Emergency', severity: 'Critical', time: new Date().toISOString(), location: { lat: -26.2041 + Math.random() * 0.1, lng: 28.0473 + Math.random() * 0.1 }, details: 'Emergency call received' }
-      ];
-      const newIncident = mockIncidents[Math.floor(Math.random() * 3)];
-      database.ref('incidents').push(newIncident);
-    }
-
-    // Simulate incidents every 10 seconds (for testing)
-    setInterval(simulateIncident, 10000);
-
-    // Initial render
-    updateStats();
-    renderAlertFeed();
-    updateChart();
-    updateMap();
+    onChildChanged(alertsRef, (snapshot) => {
+      const updatedAlert = { ...snapshot.val(), key: snapshot.key };
+      console.log('Alert updated at', new Date().toISOString(), ':', updatedAlert);
+      alerts = alerts.map(a => a.key === updatedAlert.key ? updatedAlert : a);
+      renderAlertFeed();
+    });
   </script>
 </body>
 </html>
