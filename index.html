@@ -5,11 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SOS Admin Panel</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
   <style>
     @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
     .alert-pulse { animation: pulse 1s infinite; }
     #alert-feed::-webkit-scrollbar { width: 8px; }
     #alert-feed::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+    #map { border-radius: 0.5rem; height: 300px; }
   </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -23,7 +26,8 @@
       <p id="alert-count" class="text-sm text-gray-600">0 alerts</p>
     </div>
     <div class="bg-white p-4 rounded-md shadow">
-      <h2 class="text-lg font-semibold mb-4">Alert Feed</h2>
+      <h2 class="text-lg font-semibold mb-4">Alert Feed & Map</h2>
+      <div id="map" class="mb-4"></div>
       <div id="alert-feed" class="space-y-4 max-h-96 overflow-y-auto"></div>
     </div>
   </div>
@@ -47,7 +51,16 @@
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
-    console.log('Admin panel initialized at', new Date('2025-06-26T05:40:00Z').toISOString());
+    console.log('Admin panel initialized at', new Date('2025-06-26T07:36:00Z').toISOString());
+
+    // Mapbox initialization
+    mapboxgl.accessToken = 'pk.eyJ1Ijoia2F0bGVnb3BoYXNoYSIsImEiOiJjbTlpOTdzbmYwMGNsMmpzYWJtZzN4d3pqIn0.Zt-aSMEoahrV3zkiVVHbOw';
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v11',
+      center: [-26.2041, 28.0473], // Default to Johannesburg
+      zoom: 10
+    });
 
     // State
     let alerts = [];
@@ -61,13 +74,13 @@
       alertCount.textContent = `${alerts.length} alerts`;
     }
 
-    // Render alert feed
+    // Render alert feed and update map
     function renderAlertFeed() {
       alertFeed.innerHTML = alerts.map(alert => `
         <div class="p-3 border-l-4 ${alert.status === 'pending' ? 'border-red-600 alert-pulse' : alert.status === 'in-progress' ? 'border-yellow-600' : 'border-green-600'} bg-gray-50 rounded">
           <p class="font-semibold">${alert.userId} - SOS</p>
           <p class="text-sm text-gray-600">${alert.details}</p>
-          <p class="text-xs text-gray-500">Time: ${alert.timestamp} | Lat: ${alert.location.lat ?? 'N/A'}, Lng: ${alert.location.lng ?? 'N/A'}</p>
+          <p class="text-xs text-gray-500">Time: ${alert.timestamp} | Lat: ${alert.location.lat ?? 'N/A'}, Lng: ${alert.location.lng ?? 'N/A'} | Battery: ${alert.batteryLevel ?? 'N/A'}%</p>
           <select class="mt-2 p-1 border rounded" onchange="updateStatus('${alert.key}', this.value)">
             <option value="pending" ${alert.status === 'pending' ? 'selected' : ''}>Pending</option>
             <option value="in-progress" ${alert.status === 'in-progress' ? 'selected' : ''}>In Progress</option>
@@ -75,6 +88,14 @@
           </select>
         </div>
       `).join('');
+      map.getSource('alerts')?.setData({
+        type: 'FeatureCollection',
+        features: alerts.filter(a => a.location.lat && a.location.lng).map(a => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [a.location.lng, a.location.lat] },
+          properties: { id: a.userId, status: a.status }
+        }))
+      });
     }
 
     // Update alert status
@@ -82,17 +103,39 @@
       const alertRef = ref(database, `sos-alerts/${key}`);
       try {
         await update(alertRef, { status });
-        console.log(`Status updated for key ${key} to ${status} at`, new Date().toISOString());
+        console.log(`Status updated for key ${key} to ${status} at`, new Date('2025-06-26T07:36:00Z').toISOString());
       } catch (error) {
-        console.error('Status update error:', error, 'at', new Date().toISOString());
+        console.error('Status update error:', error, 'at', new Date('2025-06-26T07:36:00Z').toISOString());
       }
     };
+
+    // Initialize map with alert layer
+    map.on('load', () => {
+      map.addSource('alerts', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({
+        id: 'alerts-layer',
+        type: 'circle',
+        source: 'alerts',
+        paint: {
+          'circle-radius': 8,
+          'circle-color': [
+            'match',
+            ['get', 'status'],
+            'pending', '#ef4444',
+            'in-progress', '#f59e0b',
+            'resolved', '#10b981',
+            '#888888'
+          ],
+          'circle-opacity': 0.8
+        }
+      });
+    });
 
     // Listen for new and updated alerts
     const alertsRef = ref(database, 'sos-alerts');
     onChildAdded(alertsRef, (snapshot) => {
       const alert = { ...snapshot.val(), key: snapshot.key };
-      console.log('New SOS alert received at', new Date().toISOString(), ':', alert);
+      console.log('New SOS alert received at', new Date('2025-06-26T07:36:00Z').toISOString(), ':', alert);
       alerts.push(alert);
       updateAlertCount();
       renderAlertFeed();
@@ -100,7 +143,7 @@
 
     onChildChanged(alertsRef, (snapshot) => {
       const updatedAlert = { ...snapshot.val(), key: snapshot.key };
-      console.log('Alert updated at', new Date().toISOString(), ':', updatedAlert);
+      console.log('Alert updated at', new Date('2025-06-26T07:36:00Z').toISOString(), ':', updatedAlert);
       alerts = alerts.map(a => a.key === updatedAlert.key ? updatedAlert : a);
       renderAlertFeed();
     });
